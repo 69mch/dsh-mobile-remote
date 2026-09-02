@@ -118,12 +118,24 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  /* 详情/右侧面板在窄屏改为全屏覆盖层，不挤占正文 */
+  /* 详情/右侧面板：不做强制 fixed（避免破坏 GUI 自有的抽屉/关闭按钮）；
+     仅限宽 + 内部纵向可滚动，交给 GUI 自身的窄屏覆盖层逻辑 */
   [class$="_detailsCol"], [class$="_details"], [class$="_aside"] {
-    position: fixed !important;
-    inset: 0 auto 0 0 !important;
-    width: min(88vw, 420px) !important;
-    z-index: 30;
-    box-shadow: 0 0 24px rgba(0,0,0,.35);
+    max-width: 92vw;
+  }
+  [class$="_detailsCol"] [class$="_body"], [class$="_details"] [class$="_body"] {
+    max-height: calc(100dvh - 140px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* 浮层/抽屉的关闭按钮：保持可见、够大、不超出屏幕右上 */
+  [class$="_close"], [class$="_dismiss"], [class$="_cancel"], [class$="_x"] {
+    min-width: 36px !important;
+    min-height: 36px !important;
+    flex: none;
+  }
+  [class$="_titlebar"], [class$="_header"] { position: relative; }
+  [class$="_titlebar"] [class$="_close"], [class$="_header"] [class$="_close"] {
+    margin-left: auto;
   }
 }

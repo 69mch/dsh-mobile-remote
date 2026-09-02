@@ -1,0 +1,4 @@
+# dsh-mobile-compat — bundle patch（web profile 自动追加本插件行）
+- insert:
+    - id: dsh-mobile-compat
+      name: 'dsh-mobile-compat'

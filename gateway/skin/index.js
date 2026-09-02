@@ -35,7 +35,7 @@ function buildSkinInject() {
   let js = '';
   try { js = read('mobile.js'); } catch { js = ''; }
 
-  return `${meta}\n<style>${css}</style>${js ? `\n<script>${js}</script>` : ''}`;
+  return `${meta}\n<style id="dsh-mobile-skin">${css}</style>${js ? `\n<script id="dsh-mobile-js">${js}</script>` : ''}`;
 }
 
 module.exports = { buildSkinInject };

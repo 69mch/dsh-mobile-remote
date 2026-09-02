@@ -1,0 +1,29 @@
+{
+  "name": "dsh-mobile-compat",
+  "version": "0.1.0",
+  "description": "DSH mobile-compat skin: toggle to enable/disable mobile adaptation of the web console.",
+  "main": "lib/index.js",
+  "type": "module",
+  "license": "MIT",
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime"
+      ],
+      "platform": "web"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  }
+}
