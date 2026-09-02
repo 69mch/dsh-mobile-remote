@@ -1,0 +1,21 @@
+{
+  "version": "1.0.0",
+  "listenHost": "127.0.0.1",
+  "listenPort": 9443,
+  "upstream": "http://127.0.0.1:3080",
+  "secretsFile": "secrets.json",
+  "logs": {
+    "dir": "logs",
+    "maxBytes": 5242880,
+    "retainDays": 7
+  },
+  "limits": {
+    "loginPerMin": 5,
+    "reqPerSec": 20,
+    "lockAfter": 5,
+    "lockMs": 15
+  },
+  "store": {
+    "maxSessions": 200
+  }
+}

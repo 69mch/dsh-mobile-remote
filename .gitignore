@@ -1,0 +1,20 @@
+# 安全：绝不提交
+config/secrets.json
+config/secrets.*.json
+config/pairing.json
+config/session.key
+android-app/dsh-release.keystore
+gateway/certs/
+logs/
+*.log
+*.out
+*.err
+
+# 构建产物 / 安装包（仓库只放源码与文档，APK 与中间件不推送）
+android-app/build/
+android-app/dist/
+*.idsig
+
+# 系统
+.DS_Store
+Thumbs.db
