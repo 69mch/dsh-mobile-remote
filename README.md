@@ -127,3 +127,17 @@ mobile-remote/
 - 公网隧道会增大暴露面；用完建议停掉或改用 Tailscale 私有通道。
 - 设备 ID（ANDROID_ID）为弱凭据，防护依赖高明熵连接码 + 限流；真机首绑后其他设备同码被拒。
 - 待办：i18n / iOS·鸿蒙壳同源加固；连接码改由 Harness 插件一键生成；Tailscale 命名隧道以获稳定 HTTPS 地址。
+
+---
+
+## 网关能力清单（v1.2 新增）
+
+| 能力 | 端点/说明 |
+|---|---|
+| RSA 传输加密 | `GET /__gw/pubkey` 取公钥；`POST /__gw/pair` 可带 `encryptedCode`（RSA-OAEP/SHA-256 加密连接码），密钥 `config/remote-key.json`(gitignore) |
+| 防爆破锁 IP | 配对连续失败 ≥ `limits.lockAfter`(默认5) 次 → 该 IP 熔断 `limits.lockMs`(默认15) 分钟（429 `ip_locked`） |
+| 设备管理 | `GET /__gw/devices`（鉴权）列出绑定/吊销设备；`POST /__gw/devices/revoke {deviceId?}` 吊销（默认当前会话设备），被吊销设备的既有会话立即失效（鉴权层 `isRevoked` 检查） |
+| 移动端皮肤 | `gateway/skin/` 皮肤模块：`mobile.css`(预设 base/density/header/dialog) + `mobile.js`(`html[data-dsh-mobile]`) + `skin.json`(开关)，由网关注入所有 HTML（替代原内联 CSS） |
+
+> App 侧（APK）仍发送明文 `code`，网关兼容；客户端 RSA 加密、设备管理 UI、QR 扫码为后续增强（需重建 APK / 引入扫码解码）。
+

@@ -1,0 +1,129 @@
+/* ============================================================
+   dsh-mobile-skin / mobile.css
+   DSH Web 移动端皮肤 —— 由 mobile-remote 网关注入到页面 <head>
+   仅对窄屏/竖屏生效（≤900px），不影响桌面。
+   选择器策略：CSS Modules 类名形如 <hash>_<name>，用后缀 [class$="_name"]
+   稳定匹配；另用 CSS 变量与结构选择器兜底，跨 DSH 构建可用。
+   ============================================================ */
+
+@media (max-width: 900px) {
+  /* ---------- preset: base（视口/防溢出/换行） ---------- */
+  html { -webkit-text-size-adjust: 100%; }
+  html, body { max-width: 100vw; overflow-x: hidden; }
+  #root, #root > div { width: 100%; max-width: 100vw; min-width: 0; }
+  /* 长文本/代码强制换行，避免横向滚动 */
+  pre, code, textarea,
+  [class$="_command"], [class$="_codeBlock"], [class$="_snippet"] {
+    white-space: pre-wrap !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    max-width: 100%;
+  }
+  [class$="_text"], [class$="_body"], [class$="_paragraph"],
+  [class$="_summary"], [class$="_preview"], [class$="_content"] {
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
+  /* 任意容器不横向溢出（不裁剪关键操作） */
+  [class$="_column"], [class$="_stack"], [class$="_card"],
+  [class$="_panel"], [class$="_section"], [class$="_frame"],
+  [class$="_centerCol"], [class$="_main"] {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  /* ---------- preset: header（头部紧凑，防截断/溢出） ---------- */
+  [class$="_header"], [class$="_titleRow"], [class$="_toolbar"],
+  [class$="_topbar"], [class$="_statusbar"], [class$="_nav"] {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+  [class$="_titleCluster"], [class$="_crumbs"], [class$="_breadcrumbs"],
+  [class$="_title"], [class$="_heading"] {
+    min-width: 0;
+    max-width: 100%;
+  }
+  [class$="_crumbs"], [class$="_breadcrumbs"] {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  [class$="_headerActions"], [class$="_headerUtilities"], [class$="_actions"],
+  [class$="_buttons"], [class$="_tabs"] {
+    flex-wrap: wrap;
+    gap: 4px;
+    min-width: 0;
+  }
+  /* 让可滚动工具条纵向走完再换行，避免挤压正文标题 */
+  [class$="_tabs"] { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+
+  /* ---------- preset: density（正文高密度） ---------- */
+  /* 会话内容列在窄屏铺满，收窄对话最大宽度为可视宽度 */
+  :root { --dsh-chat-content-width: 100%; }
+  /* 消息正文：适读小字号 + 紧凑行距（可读性优先，仍大于 12px） */
+  [class$="_root"] [class$="_body"],
+  [class$="_message"] [class$="_text"],
+  [class$="_markdown"] {
+    font-size: 13.5px !important;
+    line-height: 1.5 !important;
+  }
+  /* 代码块一屏内可滚动，不撑爆整屏 */
+  [class$="_codeBlock"], [class$="_pre"] {
+    max-height: 45vh;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* 工具/思考条目收紧 */
+  [class$="_toolCall"], [class$="_thinking"], [class$="_collapsible"] {
+    font-size: 12.5px;
+  }
+
+  /* ---------- preset: dialog / settings（弹窗与设置适配） ---------- */
+  /* 弹窗（新增/编辑模型等）：居中、占满、内容纵向滚动，底部操作可达 */
+  [class$="_dialog"], [class$="_modal"], [class$="_popover"],
+  [class$="_sheet"] {
+    width: min(600px, 100%) !important;
+    max-width: 100vw !important;
+  }
+  [class$="_dialog"] [class$="_content"], [class$="_modal"] [class$="_content"] {
+    max-height: calc(100dvh - 32px) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* 设置/模型表单：字段纵向排布，输入框占满 */
+  [class$="_section"] { max-width: 100% !important; }
+  [class$="_rowCard"], [class$="_field"], [class$="_formRow"],
+  [class$="_row"], [class$="_fieldRow"] {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  [class$="_input"], [class$="_selectInput"], [class$="_textarea"],
+  [class$="_select"], [class$="_button"], [class$="_primary"] {
+    min-width: 0;
+    max-width: 100%;
+  }
+  [class$="_actions"], [class$="_footer"] {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  [class$="_primary"], [class$="_saveButton"], [class$="_submit"] {
+    width: 100%;
+  }
+  /* 设置主面板导航与内容：内容占满，导航若为横向条允许横滚 */
+  [class$="_settings"] { width: 100%; }
+  [class$="_settings"] [class$="_nav"], [class$="_settings"] [class$="_menu"] {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* 详情/右侧面板在窄屏改为全屏覆盖层，不挤占正文 */
+  [class$="_detailsCol"], [class$="_details"], [class$="_aside"] {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    width: min(88vw, 420px) !important;
+    z-index: 30;
+    box-shadow: 0 0 24px rgba(0,0,0,.35);
+  }
+}

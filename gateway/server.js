@@ -18,6 +18,7 @@ const { Logger } = require('./lib/logger');
 const { MemoryStore } = require('./lib/store');
 const { Pairing } = require('./lib/pairing');
 const { Session } = require('./lib/session');
+const { loadKeypair } = require('./lib/rsa');
 const rl = require('./lib/ratelimit');
 const { passthroughProxy, upgradeProxy } = require('./lib/proxy');
 
@@ -76,7 +77,8 @@ function main() {
   }
 
   const session = new Session(path.join(configDir, 'session.key'), config.sessionTtlDays || 30);
-  const store = new MemoryStore(config.store || {}); // 仅限流计数
+  const rsa = loadKeypair(path.join(configDir, 'remote-key.json'), logger); // 配对码 RSA-OAEP 传输加密
+  const store = new MemoryStore(config.store || {}); // 限流/失败锁定计数
   const upstream = config.upstream || 'http://127.0.0.1:3080';
   const listenHost = config.listenHost || '127.0.0.1';
   const listenPort = config.listenPort || 9443;
@@ -87,7 +89,13 @@ function main() {
 
     // ---- 免认证端点 ----
     if (req.url === '/__gw/pair' && req.method === 'POST') {
-      handlePair(req, res, pairing, session, store, config, logger, ip);
+      handlePair(req, res, pairing, session, store, config, logger, ip, rsa);
+      return;
+    }
+    if (req.url === '/__gw/pubkey' && req.method === 'GET') {
+      // RSA 公钥：App 用它把连接码加密后再 POST /__gw/pair（防明文嗅探）
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      res.end(JSON.stringify({ publicKey: rsa.publicKeyPem || null }));
       return;
     }
     if (req.url === '/__gw/health' && req.method === 'GET') {
@@ -130,6 +138,13 @@ function main() {
         res.end(JSON.stringify({ error: 'unauthorized', hint: 'pair via POST /__gw/pair' }));
         return;
       }
+      // 已吊销设备的既有会话：立即失效（设备管理）
+      if (pairing.isRevoked(sess.deviceId)) {
+        logger.audit({ ev: 'session_revoked', ip, deviceId: sess.deviceId, url: req.url });
+        res.writeHead(401, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'revoked', hint: 'pair again via POST /__gw/pair' }));
+        return;
+      }
 
       // ---- 限流 ----
       if (!rl.reqOk(store, ip, config.limits || {})) {
@@ -144,6 +159,16 @@ function main() {
         logger.access({ ip, deviceId: sess.deviceId, method: req.method, path: req.url, status: 200, dur: Date.now() - start });
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify(pairing.status()));
+        return;
+      }
+      if (req.url === '/__gw/devices' && req.method === 'GET') {
+        logger.access({ ip, deviceId: sess.deviceId, method: req.method, path: req.url, status: 200, dur: Date.now() - start });
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ devices: pairing.listDevices() }));
+        return;
+      }
+      if (req.url === '/__gw/devices/revoke' && req.method === 'POST') {
+        handleRevoke(req, res, pairing, logger, ip, sess.deviceId);
         return;
       }
 
@@ -197,8 +222,18 @@ function parseCookie(req) {
   return null;
 }
 
-/** POST /__gw/pair：{code, deviceId, model?, imei?} */
-function handlePair(req, res, pairing, session, store, config, logger, ip) {
+/** POST /__gw/pair：{code 或 encryptedCode, deviceId, model?, imei?} */
+function handlePair(req, res, pairing, session, store, config, logger, ip, rsa) {
+  const lockAfter = config.limits?.lockAfter || 5;
+  const lockMsMs = (config.limits?.lockMs || 15) * 60_000;
+
+  // 锁 IP：连续失败达阈值后熔断该 IP
+  if (store.isLocked(ip)) {
+    logger.audit({ ev: 'pair_ip_locked', ip });
+    res.writeHead(429, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, reason: 'ip_locked' }));
+    return;
+  }
   if (!store.hit(`pair:${ip}`, 60_000, config.limits?.pairPerMin || 10)) {
     logger.audit({ ev: 'pair_rate_limited', ip });
     res.writeHead(429, { 'content-type': 'application/json' });
@@ -212,22 +247,28 @@ function handlePair(req, res, pairing, session, store, config, logger, ip) {
     let fields = {};
     try { fields = JSON.parse(body || '{}'); } catch { fields = {}; }
 
-    const result = pairing.pair(
-      String(fields.code || ''),
-      {
-        deviceId: String(fields.deviceId || ''),
-        deviceModel: String(fields.model || ''),
-        imei: String(fields.imei || ''),
-      }
-    );
+    // 支持 RSA-OAEP 加密传输：客户端把连接码用公钥加密后发 encryptedCode；
+    // 服务端解密后再校验，连接码不出现在网络上。也兼容明文 code（本机联调）。
+    let code = String(fields.code || '');
+    if (!code && fields.encryptedCode) {
+      code = rsa ? (rsa.decrypt(String(fields.encryptedCode)) || '') : '';
+    }
+
+    const result = pairing.pair(code, {
+      deviceId: String(fields.deviceId || ''),
+      deviceModel: String(fields.model || ''),
+      imei: String(fields.imei || ''),
+    });
 
     if (!result.ok) {
       logger.audit({ ev: 'pair_fail', ip, reason: result.reason, deviceId: String(fields.deviceId || '').slice(0, 40) });
-      const code = result.reason === 'bound_other' ? 403 : 401;
-      res.writeHead(code, { 'content-type': 'application/json' });
+      if (result.reason === 'invalid_code') store.recordFail(ip, lockAfter, lockMsMs); // 计入爆破
+      const status = result.reason === 'bound_other' ? 403 : 401;
+      res.writeHead(status, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: false, reason: result.reason }));
       return;
     }
+    store.clearFail(ip);
 
     // 成功：签发无状态设备会话
     const issued = session.issue(result.device.deviceId);
@@ -250,6 +291,21 @@ function handlePair(req, res, pairing, session, store, config, logger, ip) {
       device: result.device,
       sessionDays: Math.floor(session.ttlMs / 86400_000),
     }));
+  });
+}
+
+/** POST /__gw/devices/revoke：吊销设备（默认=当前会话设备；可指定 deviceId） */
+function handleRevoke(req, res, pairing, logger, ip, sessDeviceId) {
+  let body = '';
+  req.on('data', (c) => { body += c; if (body.length > 8192) req.destroy(); });
+  req.on('end', () => {
+    let fields = {};
+    try { fields = JSON.parse(body || '{}'); } catch { fields = {}; }
+    const target = String(fields.deviceId || sessDeviceId || '');
+    const result = pairing.revoke(target);
+    logger.audit({ ev: 'device_revoked', ip, deviceId: target, by: sessDeviceId });
+    res.writeHead(result.ok ? 200 : 400, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(result));
   });
 }
 

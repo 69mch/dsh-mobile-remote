@@ -1,0 +1,23 @@
+{
+  "version": "1.0.0",
+  "name": "dsh-mobile-skin",
+  "description": "DSH 移动端皮肤（由 mobile-remote 网关注入）：窄屏/竖屏适配、高密度正文、设置与弹窗适配、防横向溢出。",
+  "presets": {
+    "base": {
+      "enabled": true,
+      "label": "基础：视口/防横向溢出/文本换行"
+    },
+    "density": {
+      "enabled": true,
+      "label": "高密度正文：字号与行距收紧、内容列占宽"
+    },
+    "header": {
+      "enabled": true,
+      "label": "头部紧凑：标题/操作区压缩防截断"
+    },
+    "dialog": {
+      "enabled": true,
+      "label": "弹窗/设置适配：居中微缩、可滚动、按钮可用"
+    }
+  }
+}

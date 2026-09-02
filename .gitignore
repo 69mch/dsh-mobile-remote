@@ -3,6 +3,7 @@ config/secrets.json
 config/secrets.*.json
 config/pairing.json
 config/session.key
+config/remote-key.json
 android-app/dsh-release.keystore
 gateway/certs/
 logs/

@@ -40,14 +40,14 @@ class Pairing {
     } catch (e) {
       if (this.logger) this.logger.error({ msg: 'pairing_load_failed', err: String(e && e.message || e) });
     }
-    return { codeHash: null, codeSalt: null, createdAt: null, bound: null };
+    return { codeHash: null, codeSalt: null, createdAt: null, bound: null, revoked: [] };
   }
 
   _save() {
     fs.writeFileSync(this.file, JSON.stringify(this.state, null, 2), 'utf8');
   }
 
-  /** 生成新连接码：旧码作废 + 解绑。返回明文 code（仅本次展示）。 */
+  /** 生成新连接码：旧码作废 + 解绑 + 清空吊销名单。返回明文 code（仅本次展示）。 */
   rotateCode() {
     const code = randomCode();
     const salt = crypto.randomBytes(16).toString('hex');
@@ -56,6 +56,7 @@ class Pairing {
       codeSalt: salt,
       createdAt: new Date().toISOString(),
       bound: null,
+      revoked: [],
     };
     this._save();
     return code;
@@ -107,11 +108,56 @@ class Pairing {
     return { ok: false, reason: 'bound_other', boundDeviceId: this.state.bound.deviceId };
   }
 
+  /** 设备是否已被吊销（其既有会话应立即失效） */
+  isRevoked(deviceId) {
+    this.state = this._load(); // 实时同步（可被 revoke/gen-code 在其它进程修改）
+    const rev = this.state.revoked || [];
+    return rev.includes(String(deviceId));
+  }
+
+  /**
+   * 吊销设备：将其加入吊销名单并清除绑定（若绑定同设备）。
+   * 生效后其既有无状态会话在网关鉴权层被拒（见 server.js isRevoked 检查）。
+   * @returns {{ok:boolean, revoked:string}}
+   */
+  revoke(deviceId) {
+    this.state = this._load();
+    const id = String(deviceId || '').trim();
+    if (!id) return { ok: false, reason: 'missing_device' };
+    const rev = Array.isArray(this.state.revoked) ? this.state.revoked.filter((x) => x !== id) : [];
+    rev.push(id);
+    this.state.revoked = rev;
+    if (this.state.bound && this.state.bound.deviceId === id) {
+      this.state.bound = null;
+    }
+    this._save();
+    return { ok: true, revoked: id };
+  }
+
+  /** 返回设备视图：绑定中的设备（含元信息）+ 已吊销设备列表。 */
+  listDevices() {
+    this.state = this._load();
+    const out = [];
+    if (this.state.bound) {
+      out.push({
+        deviceId: this.state.bound.deviceId,
+        deviceModel: this.state.bound.deviceModel || '',
+        boundAt: this.state.bound.boundAt,
+        status: 'bound',
+      });
+    }
+    for (const id of this.state.revoked || []) {
+      out.push({ deviceId: id, status: 'revoked' });
+    }
+    return out;
+  }
+
   /** 返回可展示状态（不含哈希）。 */
   status() {
     return {
       hasCode: !!this.state.codeHash,
       codeCreatedAt: this.state.createdAt,
+      revokedCount: (this.state.revoked || []).length,
       bound: this.state.bound ? {
         deviceId: this.state.bound.deviceId,
         deviceModel: this.state.bound.deviceModel || '',

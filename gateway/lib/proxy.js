@@ -8,17 +8,9 @@
 const http = require('http');
 const zlib = require('zlib');
 const { Transform } = require('stream');
+const { buildSkinInject } = require('../skin');
 
-const MOBILE_INJECT = `<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#0b0d10">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<style>
-@media (max-width: 860px){
-  html,body{max-width:100vw;overflow-x:hidden}
-  #root{min-height:100dvh}
-}
-</style>`;
+const MOBILE_INJECT = buildSkinInject();
 
 const MAX_INJECT_BUFFER = 4 * 1024 * 1024; // 4MB：超过即放弃注入直接透传
 
