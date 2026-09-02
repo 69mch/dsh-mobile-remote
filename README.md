@@ -139,5 +139,5 @@ mobile-remote/
 | 设备管理 | `GET /__gw/devices`（鉴权）列出绑定/吊销设备；`POST /__gw/devices/revoke {deviceId?}` 吊销（默认当前会话设备），被吊销设备的既有会话立即失效（鉴权层 `isRevoked` 检查） |
 | 移动端皮肤 | `gateway/skin/` 皮肤模块：`mobile.css`(预设 base/density/header/dialog) + `mobile.js`(`html[data-dsh-mobile]`) + `skin.json`(开关)，由网关注入所有 HTML（替代原内联 CSS） |
 
-> App 侧（APK）仍发送明文 `code`，网关兼容；客户端 RSA 加密、设备管理 UI、QR 扫码为后续增强（需重建 APK / 引入扫码解码）。
+> App 侧（APK）：配对时自动取 `/__gw/pubkey`，用 RSA-OAEP/SHA-256(MGF1-SHA256) 加密连接码发送 `encryptedCode`（取钥失败回退明文兼容）；配对页含「解绑已登录设备」按钮（调用 `/__gw/devices/revoke` 并清除会话）。QR 扫码为后续增强（需引入相机解码）。
 

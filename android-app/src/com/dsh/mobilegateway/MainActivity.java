@@ -35,6 +35,11 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.security.KeyFactory;
+import java.security.PublicKey;
+import java.security.spec.X509EncodedKeySpec;
+import java.util.Base64;
+import javax.crypto.Cipher;
 
 /**
  * DSH 远程 — 连接码配对 + Harness GUI
@@ -203,6 +208,16 @@ public class MainActivity extends Activity {
         pairBtn.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { doPair(); } });
         ll.addView(pairBtn, lpMatchWrapMargin(0, 20, 0, 0));
 
+        // 设备管理：解绑已登录设备（登出），回到配对页
+        TextView devBtn = new TextView(this);
+        devBtn.setText("解绑已登录设备（设备管理）");
+        devBtn.setTextColor(Color.rgb(120, 140, 170));
+        devBtn.setTextSize(13);
+        devBtn.setGravity(Gravity.CENTER);
+        devBtn.setPadding(0, dp(8), 0, dp(8));
+        devBtn.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { doRevokeDevice(); } });
+        ll.addView(devBtn, lpWrapMargin(0, 4, 0, 0));
+
         TextView hint = new TextView(this);
         hint.setText("连接码在电脑 Harness 首次启动时显示；\n如需新码运行 gen-code.ps1。\n此连接码仅供一台设备绑定。");
         hint.setTextColor(Color.rgb(120, 130, 145));
@@ -361,18 +376,28 @@ public class MainActivity extends Activity {
     private void doPair() {
         String addrErr = resolveAndSaveAddress();
         if (addrErr != null) { setStatus(addrErr); return; }
-        String code = codeInput.getText().toString().trim();
+        final String code = codeInput.getText().toString().trim();
         if (code.isEmpty()) { setStatus("请输入连接码"); return; }
         setStatus(null);
         statusText.setVisibility(View.VISIBLE);
         statusText.setTextColor(Color.rgb(154, 163, 175));
         statusText.setText("连接中…");
 
-        String body = "{\"code\":\"" + esc(code) + "\",\"deviceId\":\"" + esc(deviceId())
-                + "\",\"model\":\"" + esc(deviceModel()) + "\",\"imei\":\"" + esc(imei()) + "\"}";
-
         new Thread(new Runnable() { public void run() {
             try {
+                String body;
+                // RSA 传输加密：取公钥 → 加密连接码 → 发 encryptedCode（防明文嗅探）
+                String pub = fetchPubKey();
+                if (pub != null) {
+                    body = "{\"encryptedCode\":\"" + esc(rsaEncrypt(pub, code))
+                            + "\",\"deviceId\":\"" + esc(deviceId())
+                            + "\",\"model\":\"" + esc(deviceModel()) + "\"}";
+                } else {
+                    // 兼容：取公钥失败回退明文（本机联调等场景）
+                    body = "{\"code\":\"" + esc(code) + "\",\"deviceId\":\"" + esc(deviceId())
+                            + "\",\"model\":\"" + esc(deviceModel()) + "\"}";
+                }
+
                 HttpURLConnection c = openConn(targetUrl + "__gw/pair", "POST");
                 c.setRequestProperty("Content-Type", "application/json");
                 c.setDoOutput(true);
@@ -410,6 +435,75 @@ public class MainActivity extends Activity {
         } }).start();
     }
 
+    /** GET /__gw/pubkey → PEM 公钥；失败/未提供返回 null */
+    private String fetchPubKey() {
+        try {
+            HttpURLConnection c = openConn(targetUrl + "__gw/pubkey", "GET");
+            int rc = c.getResponseCode();
+            BufferedReader br = new BufferedReader(new InputStreamReader(
+                    rc >= 400 ? c.getErrorStream() : c.getInputStream(), "UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) sb.append(line);
+            br.close();
+            c.disconnect();
+            if (rc != 200) return null;
+            org.json.JSONObject o = new org.json.JSONObject(sb.toString());
+            String pem = o.optString("publicKey", "");
+            return pem.isEmpty() ? null : pem;
+        } catch (Exception e) { return null; }
+    }
+
+    /** PEM 公钥 RSA-OAEP/SHA-256（MGF1-SHA256）加密 → base64 */
+    private String rsaEncrypt(String pubPem, String plain) throws Exception {
+        String b64 = pubPem.replaceAll("-----BEGIN [A-Z ]*-----", "").replaceAll("-----END [A-Z ]*-----", "")
+                .replaceAll("\\s", "");
+        byte[] der = Base64.getDecoder().decode(b64);
+        PublicKey pk = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(der));
+        Cipher c = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding");
+        c.init(Cipher.ENCRYPT_MODE, pk);
+        return Base64.getEncoder().encodeToString(c.doFinal(plain.getBytes("UTF-8")));
+    }
+
+    /** 解绑当前登录设备（设备管理）：POST /__gw/devices/revoke → 清 Cookie → 回到配对页 */
+    private void doRevokeDevice() {
+        setStatus(null);
+        statusText.setVisibility(View.VISIBLE);
+        statusText.setTextColor(Color.rgb(154, 163, 175));
+        statusText.setText("正在解绑…");
+        new Thread(new Runnable() { public void run() {
+            try {
+                HttpURLConnection c = openConn(targetUrl + "__gw/devices/revoke", "POST");
+                c.setRequestProperty("Content-Type", "application/json");
+                c.setDoOutput(true);
+                OutputStream os = c.getOutputStream();
+                os.write("{}".getBytes("UTF-8"));
+                os.close();
+                int rc = c.getResponseCode();
+                StringBuilder sb = new StringBuilder();
+                BufferedReader br = new BufferedReader(new InputStreamReader(
+                        rc >= 400 ? c.getErrorStream() : c.getInputStream(), "UTF-8"));
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+                c.disconnect();
+                // 无论结果都清除本机会话 Cookie
+                CookieManager.getInstance().removeAllCookies(null);
+                CookieManager.getInstance().flush();
+                if (rc == 200) {
+                    runOnUiThread(new Runnable() { public void run() {
+                        showPairView();
+                        setStatus("已解绑本设备。如需继续，请用新的连接码重新配对。");
+                    } });
+                } else {
+                    runOnUiThread(new Runnable() { public void run() { showPairView(); setStatus("解绑请求未完成（可重试或轮换连接码）"); } });
+                }
+            } catch (Exception e) {
+                runOnUiThread(new Runnable() { public void run() { setStatus("解绑失败: " + e.getMessage()); } });
+            }
+        } }).start();
+    }
+
     private String parseReason(String resp) {
         try {
             org.json.JSONObject o = new org.json.JSONObject(resp);
@@ -417,6 +511,7 @@ public class MainActivity extends Activity {
             if ("bound_other".equals(r)) return "此连接码已绑定其他设备，无法使用";
             if ("invalid_code".equals(r)) return "连接码错误";
             if ("rate_limited".equals(r)) return "尝试过于频繁，请稍后再试";
+            if ("ip_locked".equals(r)) return "失败次数过多，本网络已被临时锁定，请稍后再试";
             return o.optString("error", resp);
         } catch (Exception e) { return resp; }
     }

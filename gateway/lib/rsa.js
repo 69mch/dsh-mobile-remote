@@ -52,6 +52,7 @@ function makeFacade(privateKeyPem, logger) {
               key: privateKeyPem,
               padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
               oaepHash: 'sha256',
+              mgf1Hash: 'sha256', // 与 Android "OAEPWithSHA-256AndMGF1Padding" 对齐
             },
             buf
           )
